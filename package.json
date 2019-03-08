@@ -1,0 +1,19 @@
+{
+  "name": "@vimlet/vimlet-static",
+  "version": "0.0.1",
+  "main": "src/index.js",
+  "description": "",
+  "scripts": {
+    "start": "nodemon -w test test/server.js"
+  },
+  "dependencies": {
+    "express": "4.16.4",
+    "md5": "2.2.1",
+    "mime": "2.4.0"
+  },
+  "devDependencies": {
+    "nodemon": "1.17.5"
+  },
+  "author": "",
+  "license": "UNLICENSED"
+}
