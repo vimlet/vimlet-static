@@ -1,8 +1,9 @@
 // TODO
 // Mimic all express static API
-// Support hooks for response
+// Customizable tags
 // Cache
 // Add glob support for include and exclude for processFile
+// README.md
 // Support Koa
 
 var express = require("express");
@@ -15,6 +16,7 @@ var mime = require("mime");
 
 module.exports = function (staticPath, options) {
   options = options || {};
+  options.tags = options.tags || ["@{", "}", ".hash."];
   options.cache = "cache" in options ? options.cache : false;
   options.parseEnable = "hashEnable" in options ? options.parseEnable : true;
   options.hashEnable = "hashEnable" in options ? options.hashEnable : true;
@@ -36,6 +38,15 @@ module.exports = function (staticPath, options) {
     });
   }
 
+  // Escape tags for regex use
+  options.tags.forEach(function (value, index) {
+    options.tags[index] = escapeRegExp(value);
+  });
+
+  function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
   function checkParseExtensions(extension) {
     return options.parseExtensions == "any" || extension in parseExtensionsObject;
   }
@@ -44,10 +55,10 @@ module.exports = function (staticPath, options) {
     if (options.parseEnable) {
       if (checkParseExtensions(path.extname(filePath))) {
         var matchFile;
-        file = file.toString().replace(/\${.*}/g, function (match) {
+        file = file.toString().replace(new RegExp(options.tags[0] + ".*" + options.tags[1], "g"), function (match) {
           match = match.substring(2, match.length - 1);
-          matchFile = path.join(staticPath, match.replace(/\.hash\./, "."));
-          match = match.replace(/\.hash\./, "." + md5(fs.readFileSync(matchFile)).substring(0, options.hashLength) + ".");
+          matchFile = path.join(staticPath, match.replace(new RegExp(options.tags[2]), "."));
+          match = match.replace(new RegExp(options.tags[2]), "." + md5(fs.readFileSync(matchFile)).substring(0, options.hashLength) + ".");
           return match;
         });
       }
@@ -89,7 +100,7 @@ module.exports = function (staticPath, options) {
             var file = fs.readFileSync(filePath);
             options.beforeParse ? file = options.beforeParse(filePath, file) : null;
             var payload = processFile(filePath, file);
-            options.afterParse ? payload = options.afterParse(filePath, file) : null;
+            options.afterParse ? payload = options.afterParse(filePath, payload) : null;
 
             // Send file
             options.beforeSend ? options.beforeSend(req, res, next) : null;
