@@ -102,7 +102,7 @@ Description: If true, it will throw on error.
 
 Default: false
 
-## parse
+### parse
 Description: If true, it will parse files allowing the interpolation of data.
 It's useful for things like file hashing.
 
