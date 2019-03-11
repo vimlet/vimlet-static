@@ -1,7 +1,6 @@
 // TODO
 // Mimic all express static API
-// Customizable tags
-// Cache
+// Cache extensions/all
 // Add glob support for include and exclude for processFile
 // README.md
 // Support Koa
@@ -15,10 +14,17 @@ var url = require("url");
 var mime = require("mime");
 
 module.exports = function (staticPath, options) {
+
+  var cache = {};
+  var cacheParsed = {};
+
   options = options || {};
+  options.debug = "debug" in options ? options.debug : false;
   options.tags = options.tags || ["@{", "}", ".hash."];
+  options.data = options.data || {};
   options.cache = "cache" in options ? options.cache : false;
-  options.parseEnable = "hashEnable" in options ? options.parseEnable : true;
+  options.cacheParsed = "cacheParsed" in options ? options.cacheParsed : false;
+  options.parseEnable = "parseEnable" in options ? options.parseEnable : true;
   options.hashEnable = "hashEnable" in options ? options.hashEnable : true;
   options.hashLength = "hashLength" in options ? options.hashLength : 7;
   options.parseExtensions = options.parseExtensions || [
@@ -39,8 +45,9 @@ module.exports = function (staticPath, options) {
   }
 
   // Escape tags for regex use
+  options.tagsEscaped = {};
   options.tags.forEach(function (value, index) {
-    options.tags[index] = escapeRegExp(value);
+    options.tagsEscaped[index] = escapeRegExp(value);
   });
 
   function escapeRegExp(string) {
@@ -54,13 +61,33 @@ module.exports = function (staticPath, options) {
   function processFile(filePath, file) {
     if (options.parseEnable) {
       if (checkParseExtensions(path.extname(filePath))) {
+        // Immediately return cached file if found
+        if (options.cacheParsed && cacheParsed[filePath]) {
+          return cacheParsed[filePath];
+        }
+
+        // Parse file
         var matchFile;
-        file = file.toString().replace(new RegExp(options.tags[0] + ".*" + options.tags[1], "g"), function (match) {
-          match = match.substring(2, match.length - 1);
-          matchFile = path.join(staticPath, match.replace(new RegExp(options.tags[2]), "."));
-          match = match.replace(new RegExp(options.tags[2]), "." + md5(fs.readFileSync(matchFile)).substring(0, options.hashLength) + ".");
+        file = file.toString().replace(new RegExp(options.tagsEscaped[0] + ".*" + options.tagsEscaped[1], "g"), function (match) {
+          // Remove tags
+          match = match.substring(options.tags[0].length, match.length - (options.tags[0].length - 1));
+          // Trim
+          match = match.trim();
+          // Hash if needed
+          if (match.includes(options.tags[2])) {
+            matchFile = path.join(staticPath, match.replace(new RegExp(options.tagsEscaped[2]), "."));
+            match = match.replace(new RegExp(options.tagsEscaped[2]), "." + md5(fs.readFileSync(matchFile)).substring(0, options.hashLength) + ".");
+          } else {
+            // Treat as data 
+            match = typeof options.data[match] === "function" ? options.data[match]() : options.data[match];
+          }
           return match;
         });
+
+        // Cache parse d file if needed
+        if (options.cacheParsed && !cacheParsed[filePath]) {
+          cacheParsed[filePath] = file;
+        }
       }
     }
     return file;
@@ -96,8 +123,19 @@ module.exports = function (staticPath, options) {
               filePath += "/index.html";
             }
 
+            // Deal with cached files to reduce I/O
+            var file;
+
+            if (options.cache) {
+              if (!cache[filePath]) {
+                cache[filePath] = fs.readFileSync(filePath);
+              }
+              file = cache[filePath];
+            } else {
+              file = fs.readFileSync(filePath);
+            }
+
             // Parse File   
-            var file = fs.readFileSync(filePath);
             options.beforeParse ? file = options.beforeParse(filePath, file) : null;
             var payload = processFile(filePath, file);
             options.afterParse ? payload = options.afterParse(filePath, payload) : null;
@@ -117,6 +155,9 @@ module.exports = function (staticPath, options) {
         }
 
       } catch (error) {
+        if (options.debug) {
+          throw error;
+        }
         next();
       }
     });

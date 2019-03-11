@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "description": "",
   "scripts": {
-    "start": "nodemon -w test test/server.js"
+    "start": "nodemon -w test -w src test/server.js"
   },
   "dependencies": {
     "express": "4.16.4",
