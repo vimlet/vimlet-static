@@ -1,7 +1,6 @@
-// TODO
+// --- TODO ---
 // Mimic all express static API
-// Cache extensions/all
-// Add glob support for include and exclude for processFile
+// Add glob support for include and exclude for parsed and cache files
 // README.md
 // Support Koa
 
