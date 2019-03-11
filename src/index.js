@@ -9,6 +9,7 @@ var md5 = require("md5");
 var fs = require("fs");
 var path = require("path");
 var url = require("url");
+var querystring = require("querystring");
 var mime = require("mime");
 
 module.exports = function (staticPath, options) {
@@ -106,8 +107,8 @@ module.exports = function (staticPath, options) {
       try {
 
         // Sanitize URL to avoid Directory Traversal Attack
-        var parsedUrl = url.parse(req.url);
-        var sanitizePath = path.normalize(parsedUrl.pathname).replace(/^(\.\.[\/\\])+/, "");
+        var parsedUrl = url.parse(req.url).pathname;
+        var sanitizePath = path.normalize(querystring.unescape(parsedUrl)).replace(/^(\.\.[\/\\])+/, "");
         var filePath = path.join(staticPath, sanitizePath);
 
         // Ensure child of staticPath to avoid Directory Traversal Attack
