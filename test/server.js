@@ -9,11 +9,11 @@ var staticPath = path.join(__dirname, "webapp");
 
 // Serve static content
 app.use(require("../src/index.js")(staticPath, {
-  debug: false,
+  // debug: true,
   parse: true,
   hash: true,
-  cache: false,
-  cacheParsed: false,
+  // cache: true,
+  // cacheParsed: true,
   data: {
     "text": "I'm injected data, so cool!",
     "date": function() {

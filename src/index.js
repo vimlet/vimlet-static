@@ -1,7 +1,6 @@
 // --- TODO ---
 // Mimic all express static API
 // Add glob support for include and exclude for parsed and cache files
-// README.md
 // Support Koa
 
 var express = require("express");
