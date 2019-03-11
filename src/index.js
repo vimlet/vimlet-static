@@ -23,8 +23,8 @@ module.exports = function (staticPath, options) {
   options.data = options.data || {};
   options.cache = "cache" in options ? options.cache : false;
   options.cacheParsed = "cacheParsed" in options ? options.cacheParsed : false;
-  options.parseEnable = "parseEnable" in options ? options.parseEnable : true;
-  options.hashEnable = "hashEnable" in options ? options.hashEnable : true;
+  options.parse = "parse" in options ? options.parse : false;
+  options.hash = "hash" in options ? options.hash : false;
   options.hashLength = "hashLength" in options ? options.hashLength : 7;
   options.parseExtensions = options.parseExtensions || [
     "html",
@@ -58,7 +58,7 @@ module.exports = function (staticPath, options) {
   }
 
   function processFile(filePath, file) {
-    if (options.parseEnable) {
+    if (options.parse) {
       if (checkParseExtensions(path.extname(filePath))) {
         // Immediately return cached file if found
         if (options.cacheParsed && cacheParsed[filePath]) {
@@ -94,7 +94,7 @@ module.exports = function (staticPath, options) {
 
   if (staticPath) {
 
-    if (options.hashEnable) {
+    if (options.hash) {
       router.get("*", function (req, res, next) {
         // Regular expression to replace the MD5 hash in the request URL with nothing
         req.url = req.url.replace(new RegExp("\\/([^\\/]+)\\.[0-9a-f]+\\.(" + hashExtensionsRegex + ")$"), "/$1.$2");

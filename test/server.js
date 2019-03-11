@@ -10,10 +10,10 @@ var staticPath = path.join(__dirname, "webapp");
 // Serve static content
 app.use(require("../src/index.js")(staticPath, {
   debug: false,
+  parse: true,
+  hash: true,
   cache: false,
   cacheParsed: false,
-  parseEnable: true,
-  hashEnable: true,
   data: {
     "text": "I'm injected data, so cool!",
     "date": function() {
@@ -25,7 +25,7 @@ app.use(require("../src/index.js")(staticPath, {
   },
   beforeSend: function (req, res, next) {
     // res.send("Hijacked!");
-    // next();
+    next();
   }
 }));
 
