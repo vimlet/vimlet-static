@@ -91,7 +91,7 @@ This will become:
 <!-- I was dynamically added! -->
 ```
 
-## Hash:
+## Hash: (Only if enabled)
 
 Note that when parsing hashed files, the actual file will not exist. To fix this when hash option is set to true, the request will be re-routed the real file by omitting the hash part.
 
