@@ -11,6 +11,11 @@ var path = require("path");
 var url = require("url");
 var querystring = require("querystring");
 var mime = require("mime");
+var util = require("util");
+
+var readFile = util.promisify(fs.readFile);
+var exists = util.promisify(fs.exists);
+var stat = util.promisify(fs.stat);
 
 module.exports = function (staticPath, options) {
 
@@ -49,6 +54,19 @@ module.exports = function (staticPath, options) {
     options.tagsEscaped[index] = escapeRegExp(value);
   });
 
+  function asyncReplace(str, re, replacer) {
+    return Promise.resolve().then(() => {
+      var fns = []
+      str.replace(re, (m, ...args) => {
+        fns.push(replacer(m, ...args))
+        return m
+      });
+      return Promise.all(fns).then(replacements => {
+        return str.replace(re, () => replacements.shift())
+      });
+    });
+  }
+
   function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
@@ -57,17 +75,17 @@ module.exports = function (staticPath, options) {
     return options.parseExtensions == "any" || extension in parseExtensionsObject;
   }
 
-  function processFile(filePath, file) {
-    if (options.parse) {
-      if (checkParseExtensions(path.extname(filePath))) {
-        // Immediately return cached file if found
-        if (options.cacheParsed && cacheParsed[filePath]) {
-          return cacheParsed[filePath];
-        }
+  async function processFile(filePath, file) {
+    if (options.parse && checkParseExtensions(path.extname(filePath))) {
+      // Immediately return cached file if found
+      if (options.cacheParsed && cacheParsed[filePath]) {
+        return cacheParsed[filePath];
+      }
 
+      return new Promise(function (resolve, reject) {
         // Parse file
-        var matchFile;
-        file = file.toString().replace(new RegExp(options.tagsEscaped[0] + ".*" + options.tagsEscaped[1], "g"), function (match) {
+        var tagsRegex = new RegExp(options.tagsEscaped[0] + ".*" + options.tagsEscaped[1], "g");
+        asyncReplace(file.toString(), tagsRegex, async function (match) {
           // Remove tags
           match = match.substring(options.tags[0].length, match.length - (options.tags[0].length - 1));
           // Trim
@@ -75,21 +93,80 @@ module.exports = function (staticPath, options) {
           // Hash if needed
           if (match.includes(options.tags[2])) {
             matchFile = path.join(staticPath, match.replace(new RegExp(options.tagsEscaped[2]), "."));
-            match = match.replace(new RegExp(options.tagsEscaped[2]), "." + md5(fs.readFileSync(matchFile)).substring(0, options.hashLength) + ".");
+            match = match.replace(new RegExp(options.tagsEscaped[2]), "." + md5(await readFile(matchFile)).substring(0, options.hashLength) + ".");
           } else {
             // Treat as data 
             match = typeof options.data[match] === "function" ? options.data[match]() : options.data[match];
           }
+
           return match;
+        }).then(function (string) {
+          file = string;
+          // Cache parse d file if needed
+          if (options.cacheParsed && !cacheParsed[filePath]) {
+            cacheParsed[filePath] = file;
+          }
+          resolve(file);
+        }).catch(function (error) {
+          reject(error);
         });
 
-        // Cache parse d file if needed
-        if (options.cacheParsed && !cacheParsed[filePath]) {
-          cacheParsed[filePath] = file;
-        }
-      }
+      });
     }
-    return file;
+
+    return new Promise(function (resolve, reject) {
+      resolve(file);
+    });
+  }
+
+  async function serveFile(req, res, next) {
+    try {
+      // Sanitize URL to avoid Directory Traversal Attack   
+      var urlPath = url.parse(req.url).pathname;
+      var sanitizePath = path.normalize(querystring.unescape(urlPath)).replace(/^(\.\.[\/\\])+/, "");
+      var filePath = path.join(staticPath, sanitizePath);
+
+      // Ensure child of staticPath to avoid Directory Traversal Attack
+      if (path.resolve(filePath).startsWith(staticPath) && await exists(filePath)) {
+
+        // Support directory without index.html
+        if ((await stat(filePath)).isDirectory()) {
+          filePath += "/index.html";
+        }
+
+        // Deal with cached files to reduce I/O
+        var file;
+
+        if (options.cache) {
+          if (!cache[filePath]) {
+            cache[filePath] = await readFile(filePath);
+          }
+          file = cache[filePath];
+        } else {
+          file = await readFile(filePath);
+        }
+
+        // Parse File   
+        options.beforeParse ? file = options.beforeParse(filePath, file) : null;
+        var payload = await processFile(filePath, file);
+        options.afterParse ? payload = options.afterParse(filePath, payload) : null;
+
+        // Send file
+        options.beforeSend ? options.beforeSend(req, res, next) : null;
+        res.setHeader("Content-Type", mime.getType(filePath));
+        res.send(payload);
+        options.afterSend ? options.afterSend(req, res, next) : null;
+
+      } else {
+        next();
+      }
+
+    } catch (error) {
+      if (options.debug) {
+        throw error;
+      }
+      next();
+    }
   }
 
   if (staticPath) {
@@ -104,61 +181,7 @@ module.exports = function (staticPath, options) {
 
     // Serve parsed file
     router.get("*", function (req, res, next) {
-      try {
-
-        // Sanitize URL to avoid Directory Traversal Attack
-        var parsedUrl = url.parse(req.url).pathname;
-        var sanitizePath = path.normalize(querystring.unescape(parsedUrl)).replace(/^(\.\.[\/\\])+/, "");
-        var filePath = path.join(staticPath, sanitizePath);
-
-        // Ensure child of staticPath to avoid Directory Traversal Attack
-        if (path.resolve(filePath).startsWith(staticPath)) {
-
-          // Serve file if exists
-          if (fs.existsSync(filePath)) {
-
-            // Support directory without index.html
-            if (fs.statSync(filePath).isDirectory()) {
-              filePath += "/index.html";
-            }
-
-            // Deal with cached files to reduce I/O
-            var file;
-
-            if (options.cache) {
-              if (!cache[filePath]) {
-                cache[filePath] = fs.readFileSync(filePath);
-              }
-              file = cache[filePath];
-            } else {
-              file = fs.readFileSync(filePath);
-            }
-
-            // Parse File   
-            options.beforeParse ? file = options.beforeParse(filePath, file) : null;
-            var payload = processFile(filePath, file);
-            options.afterParse ? payload = options.afterParse(filePath, payload) : null;
-
-            // Send file
-            options.beforeSend ? options.beforeSend(req, res, next) : null;
-            res.setHeader("Content-Type", mime.getType(filePath));
-            res.send(payload);
-            options.afterSend ? options.afterSend(req, res, next) : null;
-
-          } else {
-            next();
-          }
-
-        } else {
-          next();
-        }
-
-      } catch (error) {
-        if (options.debug) {
-          throw error;
-        }
-        next();
-      }
+      serveFile(req, res, next);
     });
   }
 
